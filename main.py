@@ -5,28 +5,27 @@ from pydantic import BaseModel
 from typing import Optional
 import asyncio
 import os
+from contextlib import asynccontextmanager
 
 from tts_service import generate_audio, VOICE_PRESETS
 from cleanup_scheduler import start_cleanup_scheduler
 
-app = FastAPI(
-    title="TTS API - Free Text-to-Speech",
-    description="Edge TTS - Hoàn toàn FREE, không cần credentials. Hỗ trợ 50+ giọng nói, 20+ ngôn ngữ"
-)
-
 scheduler = None
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global scheduler
     scheduler = start_cleanup_scheduler(interval_minutes=60)
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    global scheduler
+    yield
     if scheduler and scheduler.running:
         scheduler.shutdown()
         print("✅ Cleanup Scheduler stopped")
+
+app = FastAPI(
+    title="TTS API - Free Text-to-Speech",
+    description="Edge TTS - Hoàn toàn FREE, không cần credentials. Hỗ trợ 50+ giọng nói, 20+ ngôn ngữ",
+    lifespan=lifespan
+)
 
 # -----------------------
 # Request model
@@ -39,7 +38,7 @@ class TTSRequest(BaseModel):
 
 
 # -----------------------
-# API: Convert text -> audio
+# API: Convert text -> audio (return link)
 # -----------------------
 @app.post("/tts")
 async def tts(req: TTSRequest):
@@ -58,13 +57,36 @@ async def tts(req: TTSRequest):
             req.pitch
         )
 
-        return FileResponse(
-            path=file_path,
-            media_type="audio/mpeg",
-            filename="speech.mp3"
-        )
+        filename = os.path.basename(file_path)
+        return {
+            "status": "success",
+            "audio_url": f"/audio/{filename}",
+            "filename": filename
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -----------------------
+# API: Download audio file
+# -----------------------
+@app.get("/audio/{filename}")
+async def get_audio(filename: str):
+    """Download audio file by filename"""
+    file_path = os.path.join("audio_cache", filename)
+
+    # Security: prevent directory traversal
+    if not os.path.abspath(file_path).startswith(os.path.abspath("audio_cache")):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    return FileResponse(
+        path=file_path,
+        media_type="audio/mpeg",
+        filename=filename
+    )
 
 
 # -----------------------

@@ -587,14 +587,20 @@
                     throw new Error(error.detail || 'Lỗi không xác định');
                 }
 
-                const blob = await response.blob();
-                const audioUrl = URL.createObjectURL(blob);
-                audioPlayer.src = audioUrl;
+                const data = await response.json();
+
+                if (!data.audio_url) {
+                    throw new Error('Không nhận được link âm thanh từ API');
+                }
+
+                // Load audio từ link
+                audioPlayer.src = data.audio_url;
                 playerSection.classList.add('active');
                 showMessage('Tạo âm thanh thành công!', 'success');
 
-                // Store blob for download
-                window.audioBlob = blob;
+                // Store audio URL for download
+                window.audioUrl = data.audio_url;
+                window.audioFilename = data.filename;
             } catch (error) {
                 showMessage('Lỗi: ' + error.message, 'error');
             } finally {
@@ -604,15 +610,13 @@
         });
 
         downloadBtn.addEventListener('click', () => {
-            if (window.audioBlob) {
-                const url = URL.createObjectURL(window.audioBlob);
+            if (window.audioUrl) {
                 const a = document.createElement('a');
-                a.href = url;
-                a.download = 'audio.mp3';
+                a.href = window.audioUrl;
+                a.download = window.audioFilename || 'audio.mp3';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
-                URL.revokeObjectURL(url);
             }
         });
 

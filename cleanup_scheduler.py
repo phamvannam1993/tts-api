@@ -1,5 +1,6 @@
 import os
 import time
+import json
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
@@ -8,6 +9,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 AUDIO_DIR = "audio_cache"
+CACHE_FILE = os.path.join(AUDIO_DIR, "cache.json")
+
+
+def cleanup_cache(deleted_files):
+    """Remove cache entries for deleted files"""
+    try:
+        if not os.path.exists(CACHE_FILE):
+            return
+
+        with open(CACHE_FILE, 'r') as f:
+            cache_data = json.load(f)
+
+        # Remove cache entries for deleted files
+        for filename in deleted_files:
+            for key, cached_file in list(cache_data.items()):
+                if cached_file == filename:
+                    del cache_data[key]
+                    logger.info(f"🗑️  Cache entry removed: {key}")
+
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        logger.error(f"❌ Lỗi cleanup cache: {e}")
 
 
 def cleanup_old_audio_files(max_age_hours=1):
@@ -21,10 +45,15 @@ def cleanup_old_audio_files(max_age_hours=1):
     current_time = time.time()
     deleted_count = 0
     total_size = 0
+    deleted_files = []
 
     try:
         for filename in os.listdir(AUDIO_DIR):
             filepath = os.path.join(AUDIO_DIR, filename)
+
+            # Skip cache.json file
+            if filename == "cache.json":
+                continue
 
             if os.path.isfile(filepath):
                 file_age_hours = (current_time - os.path.getmtime(filepath)) / 3600
@@ -35,12 +64,17 @@ def cleanup_old_audio_files(max_age_hours=1):
                         total_size += file_size
                         os.remove(filepath)
                         deleted_count += 1
+                        deleted_files.append(filename)
                         logger.info(
                             f"🗑️  Đã xóa: {filename} "
                             f"(tuổi: {file_age_hours:.1f}h, dung lượng: {file_size/1024:.1f}KB)"
                         )
                     except Exception as e:
                         logger.error(f"❌ Lỗi xóa {filename}: {str(e)}")
+
+        # Clean up cache entries for deleted files
+        if deleted_files:
+            cleanup_cache(deleted_files)
 
         logger.info(
             f"✅ Cleanup hoàn tất: {deleted_count} files xóa, "

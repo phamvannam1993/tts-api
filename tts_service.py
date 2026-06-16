@@ -2,9 +2,38 @@ import edge_tts
 import uuid
 import os
 import asyncio
+import hashlib
+import json
 
 AUDIO_DIR = "audio_cache"
+CACHE_FILE = os.path.join(AUDIO_DIR, "cache.json")
 os.makedirs(AUDIO_DIR, exist_ok=True)
+
+
+def load_cache():
+    """Load text->filename cache from JSON file"""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+
+def save_cache(cache_data):
+    """Save text->filename cache to JSON file"""
+    try:
+        with open(CACHE_FILE, 'w') as f:
+            json.dump(cache_data, f)
+    except Exception as e:
+        print(f"⚠️ Lỗi lưu cache: {e}")
+
+
+def get_cache_key(text, voice, rate, pitch):
+    """Generate cache key từ text + voice + settings"""
+    combined = f"{text}|{voice}|{rate}|{pitch}"
+    return hashlib.md5(combined.encode()).hexdigest()
 
 # ============================================
 # 🇻🇳 PRESET GIỌNG VIỆT (MULTI-PROVIDER)
@@ -128,14 +157,31 @@ VOICE_PRESETS = {
 
 
 async def generate_audio(text: str, voice: str, rate: str = None, pitch: str = None):
-    """Generate audio using Edge TTS"""
-    file_name = f"{uuid.uuid4()}.mp3"
-    file_path = os.path.join(AUDIO_DIR, file_name)
-
+    """Generate audio using Edge TTS with caching"""
     preset = VOICE_PRESETS.get(voice, {})
     base_voice = preset.get("base_voice", voice)
     rate = rate or preset.get("rate_override", "+0%")
     pitch = pitch or preset.get("pitch_override", "+0Hz")
+
+    # Check cache
+    cache_key = get_cache_key(text, voice, rate, pitch)
+    cache_data = load_cache()
+
+    if cache_key in cache_data:
+        cached_file = cache_data[cache_key]
+        cached_path = os.path.join(AUDIO_DIR, cached_file)
+        if os.path.exists(cached_path):
+            print(f"✅ Cache hit: {cached_file}")
+            return cached_path
+        else:
+            # File was deleted, remove stale cache entry
+            del cache_data[cache_key]
+            save_cache(cache_data)
+            print(f"⚠️ Stale cache entry removed: {cached_file}")
+
+    # Generate new audio
+    file_name = f"{cache_key}.mp3"
+    file_path = os.path.join(AUDIO_DIR, file_name)
 
     communicate = edge_tts.Communicate(
         text=text,
@@ -145,4 +191,10 @@ async def generate_audio(text: str, voice: str, rate: str = None, pitch: str = N
     )
 
     await communicate.save(file_path)
+
+    # Save to cache
+    cache_data[cache_key] = file_name
+    save_cache(cache_data)
+    print(f"📝 Cached: {file_name}")
+
     return file_path
