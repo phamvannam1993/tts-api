@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS API - Chuyển Text thành Âm Thanh</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input[type="text"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .voice-group {
+            margin-bottom: 15px;
+        }
+
+        .voice-group h3 {
+            color: #667eea;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .voice-option {
+            display: block;
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #f9f9f9;
+            transition: all 0.2s;
+        }
+
+        .voice-option:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .voice-option input[type="radio"]:checked + .voice-label {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .voice-option input[type="radio"] {
+            margin-right: 8px;
+        }
+
+        .voice-label {
+            cursor: pointer;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .player-section {
+            background: #f9f9f9;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .player-section.active {
+            display: block;
+        }
+
+        .player-title {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        audio {
+            width: 100%;
+            margin-bottom: 12px;
+        }
+
+        .download-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .message.active {
+            display: block;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .voice-select-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 24px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                grid-template-columns: 1fr;
+            }
+
+            .voice-select-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ Text-to-Speech (FREE)</h1>
+            <p>Chuyển văn bản thành âm thanh bằng Edge TTS - 50+ giọng, 20+ ngôn ngữ</p>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <form id="ttsForm">
+            <div class="form-group">
+                <label>Nhập văn bản</label>
+                <textarea id="textInput" placeholder="Nhập đoạn văn bản bạn muốn chuyển thành âm thanh..." required></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Chọn Ngôn Ngữ & Giọng Nói</label>
+                <select id="languageFilter" style="margin-bottom: 15px;">
+                    <option value="Vietnamese">🇻🇳 Tiếng Việt (Mặc Định)</option>
+                </select>
+
+                <div id="voiceContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 12px;">
+                    <!-- Voices will be loaded here by JavaScript -->
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Cài Đặt Âm Thanh</label>
+                <div class="form-row">
+                    <div>
+                        <label style="margin-bottom: 6px;">Tốc Độ</label>
+                        <input type="text" id="rate" value="+0%" placeholder="+0%">
+                        <small style="color: #999; font-size: 12px;">-100% đến +100%</small>
+                    </div>
+                    <div>
+                        <label style="margin-bottom: 6px;">Cao Độ</label>
+                        <input type="text" id="pitch" value="+0Hz" placeholder="+0Hz">
+                        <small style="color: #999; font-size: 12px;">-20Hz đến +20Hz</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button type="submit" class="btn-primary" id="submitBtn">Tạo Âm Thanh</button>
+                <button type="reset" class="btn-secondary">Xóa</button>
+            </div>
+        </form>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Đang xử lý...</p>
+        </div>
+
+        <div class="player-section" id="playerSection">
+            <div class="player-title">✅ Âm Thanh Được Tạo</div>
+            <audio id="audioPlayer" controls></audio>
+            <button type="button" class="btn-primary download-btn" id="downloadBtn">⬇️ Tải Xuống MP3</button>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('ttsForm');
+        const textInput = document.getElementById('textInput');
+        const rateInput = document.getElementById('rate');
+        const pitchInput = document.getElementById('pitch');
+        const submitBtn = document.getElementById('submitBtn');
+        const loadingDiv = document.getElementById('loading');
+        const playerSection = document.getElementById('playerSection');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const messageDiv = document.getElementById('message');
+        const languageFilter = document.getElementById('languageFilter');
+        const voiceContainer = document.getElementById('voiceContainer');
+
+        let allVoices = {};
+
+        // Load voices from API
+        async function loadVoices() {
+            try {
+                const response = await fetch('/voices');
+                const data = await response.json();
+
+                // Build allVoices object from API response
+                Object.entries(data).forEach(([language, voices]) => {
+                    allVoices[language] = voices;
+                });
+
+                // Render Vietnamese voices by default
+                renderVoices('Vietnamese');
+
+                // Set first Vietnamese voice as default
+                setTimeout(() => {
+                    const firstRadio = document.querySelector('input[name="voice"]');
+                    if (firstRadio) {
+                        firstRadio.checked = true;
+                    }
+                }, 100);
+            } catch (error) {
+                console.error('Error loading voices:', error);
+            }
+        }
+
+        function renderVoices(language) {
+            voiceContainer.innerHTML = '';
+
+            if (!allVoices[language]) {
+                voiceContainer.innerHTML = '<p style="text-align: center; color: #999;">Không tìm thấy giọng nói</p>';
+                return;
+            }
+
+            const voices = allVoices[language];
+
+            // For Vietnamese, group by speaker and provider
+            if (language === 'Vietnamese') {
+                const edgeVoices = voices.filter(v => v.name.includes('Edge TTS'));
+                const coquiVoices = voices.filter(v => v.name.includes('Coqui XTTS'));
+
+                // Edge TTS Group
+                if (edgeVoices.length > 0) {
+                    const hoaiMyVoices = edgeVoices.filter(v => v.id.includes('HoaiMy'));
+                    const namMinhVoices = edgeVoices.filter(v => v.id.includes('NamMinh'));
+
+                    // Hoài My Group
+                    if (hoaiMyVoices.length > 0) {
+                        const group1 = document.createElement('div');
+                        group1.className = 'voice-group';
+
+                        const title1 = document.createElement('h3');
+                        title1.textContent = '👩 Hoài My (Edge TTS - Nhanh)';
+                        group1.appendChild(title1);
+
+                        hoaiMyVoices.forEach((voice) => {
+                            const label = document.createElement('label');
+                            label.className = 'voice-option';
+
+                            const radio = document.createElement('input');
+                            radio.type = 'radio';
+                            radio.name = 'voice';
+                            radio.value = voice.id;
+
+                            const voiceLabel = document.createElement('span');
+                            voiceLabel.className = 'voice-label';
+                            const shortName = voice.name
+                                .replace('👩 Hoài My - ', '')
+                                .replace('👩 Hoài My (', '')
+                                .replace(' (Edge TTS)', '')
+                                .replace(')', '');
+                            voiceLabel.textContent = shortName;
+
+                            label.appendChild(radio);
+                            label.appendChild(voiceLabel);
+                            group1.appendChild(label);
+                        });
+
+                        voiceContainer.appendChild(group1);
+                    }
+
+                    // Nam Minh Group
+                    if (namMinhVoices.length > 0) {
+                        const group2 = document.createElement('div');
+                        group2.className = 'voice-group';
+
+                        const title2 = document.createElement('h3');
+                        title2.textContent = '👨 Nam Minh (Edge TTS - Nhanh)';
+                        group2.appendChild(title2);
+
+                        namMinhVoices.forEach((voice) => {
+                            const label = document.createElement('label');
+                            label.className = 'voice-option';
+
+                            const radio = document.createElement('input');
+                            radio.type = 'radio';
+                            radio.name = 'voice';
+                            radio.value = voice.id;
+
+                            const voiceLabel = document.createElement('span');
+                            voiceLabel.className = 'voice-label';
+                            const shortName = voice.name
+                                .replace('👨 Nam Minh - ', '')
+                                .replace('👨 Nam Minh (', '')
+                                .replace(' (Edge TTS)', '')
+                                .replace(')', '');
+                            voiceLabel.textContent = shortName;
+
+                            label.appendChild(radio);
+                            label.appendChild(voiceLabel);
+                            group2.appendChild(label);
+                        });
+
+                        voiceContainer.appendChild(group2);
+                    }
+                }
+
+                // Coqui XTTS Group
+                if (coquiVoices.length > 0) {
+                    const group3 = document.createElement('div');
+                    group3.className = 'voice-group';
+
+                    const title3 = document.createElement('h3');
+                    title3.style.color = '#ff9800';
+                    title3.textContent = '🎤 Giọng Tùy Chỉnh (Coqui XTTS)';
+                    group3.appendChild(title3);
+
+                    const desc = document.createElement('p');
+                    desc.style.fontSize = '12px';
+                    desc.style.color = '#999';
+                    desc.style.marginBottom = '8px';
+                    desc.textContent = '⏳ Chậm hơn nhưng chất lượng tốt';
+                    group3.appendChild(desc);
+
+                    coquiVoices.forEach((voice) => {
+                        const label = document.createElement('label');
+                        label.className = 'voice-option';
+
+                        const radio = document.createElement('input');
+                        radio.type = 'radio';
+                        radio.name = 'voice';
+                        radio.value = voice.id;
+
+                        const voiceLabel = document.createElement('span');
+                        voiceLabel.className = 'voice-label';
+                        const shortName = voice.name.replace(' (Coqui XTTS)', '');
+                        voiceLabel.textContent = shortName;
+
+                        label.appendChild(radio);
+                        label.appendChild(voiceLabel);
+                        group3.appendChild(label);
+                    });
+
+                    voiceContainer.appendChild(group3);
+                }
+            } else {
+                // For other languages, list all voices
+                const group = document.createElement('div');
+                group.className = 'voice-group';
+
+                voices.forEach((voice) => {
+                    const label = document.createElement('label');
+                    label.className = 'voice-option';
+
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = 'voice';
+                    radio.value = voice.id;
+
+                    const voiceLabel = document.createElement('span');
+                    voiceLabel.className = 'voice-label';
+                    voiceLabel.textContent = voice.name;
+
+                    label.appendChild(radio);
+                    label.appendChild(voiceLabel);
+                    group.appendChild(label);
+                });
+
+                voiceContainer.appendChild(group);
+            }
+        }
+
+        languageFilter.addEventListener('change', (e) => {
+            renderVoices(e.target.value);
+        });
+
+        // Load voices on page load
+        loadVoices();
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const text = textInput.value.trim();
+            const voice = document.querySelector('input[name="voice"]:checked').value;
+            const rate = rateInput.value;
+            const pitch = pitchInput.value;
+
+            if (!text) {
+                showMessage('Vui lòng nhập văn bản', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            loadingDiv.classList.add('active');
+            playerSection.classList.remove('active');
+            messageDiv.classList.remove('active');
+
+            try {
+                const response = await fetch('/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        voice: voice,
+                        rate: rate,
+                        pitch: pitch
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Lỗi không xác định');
+                }
+
+                const blob = await response.blob();
+                const audioUrl = URL.createObjectURL(blob);
+                audioPlayer.src = audioUrl;
+                playerSection.classList.add('active');
+                showMessage('Tạo âm thanh thành công!', 'success');
+
+                // Store blob for download
+                window.audioBlob = blob;
+            } catch (error) {
+                showMessage('Lỗi: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                loadingDiv.classList.remove('active');
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            if (window.audioBlob) {
+                const url = URL.createObjectURL(window.audioBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'audio.mp3';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+        });
+
+        function showMessage(text, type) {
+            messageDiv.textContent = text;
+            messageDiv.className = `message active ${type}`;
+            setTimeout(() => {
+                messageDiv.classList.remove('active');
+            }, 5000);
+        }
+    </script>
+</body>
+</html>
