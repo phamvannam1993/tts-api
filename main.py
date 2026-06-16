@@ -7,11 +7,26 @@ import asyncio
 import os
 
 from tts_service import generate_audio, VOICE_PRESETS
+from cleanup_scheduler import start_cleanup_scheduler
 
 app = FastAPI(
     title="TTS API - Free Text-to-Speech",
     description="Edge TTS - Hoàn toàn FREE, không cần credentials. Hỗ trợ 50+ giọng nói, 20+ ngôn ngữ"
 )
+
+scheduler = None
+
+@app.on_event("startup")
+async def startup_event():
+    global scheduler
+    scheduler = start_cleanup_scheduler(interval_minutes=60)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global scheduler
+    if scheduler and scheduler.running:
+        scheduler.shutdown()
+        print("✅ Cleanup Scheduler stopped")
 
 # -----------------------
 # Request model
