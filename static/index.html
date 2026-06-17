@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TTS API - Chuyển Text thành Âm Thanh</title>
+    <meta name="robots" content="noindex,nofollow">
+    <title>TTS & STT API - Chuyển Đổi Giữa Text và Âm Thanh</title>
     <style>
         * {
             margin: 0;
@@ -26,7 +27,7 @@
             border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             padding: 40px;
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
         }
 
@@ -46,6 +47,44 @@
             font-size: 14px;
         }
 
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #f0f0f0;
+            margin-bottom: 30px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #999;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+        }
+
+        .tab-btn.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-btn:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
         .form-group {
             margin-bottom: 20px;
         }
@@ -59,6 +98,7 @@
         }
 
         input[type="text"],
+        input[type="file"],
         select,
         textarea {
             width: 100%;
@@ -71,6 +111,7 @@
         }
 
         input[type="text"]:focus,
+        input[type="file"]:focus,
         select:focus,
         textarea:focus {
             outline: none;
@@ -129,6 +170,37 @@
 
         .voice-label {
             cursor: pointer;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            border: 2px dashed #ddd;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            background: #f9f9f9;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-input-wrapper:hover {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .file-input-text {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .file-input-text strong {
+            display: block;
+            color: #667eea;
+            margin-bottom: 5px;
         }
 
         .button-group {
@@ -208,6 +280,28 @@
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
         }
 
+        .transcription-result {
+            background: #f9f9f9;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .transcription-result.active {
+            display: block;
+        }
+
+        .transcription-text {
+            color: #333;
+            line-height: 1.6;
+            word-wrap: break-word;
+            padding: 12px;
+            background: white;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+
         .loading {
             display: none;
             text-align: center;
@@ -256,10 +350,10 @@
             border: 1px solid #f5c6cb;
         }
 
-        .voice-select-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
+        .message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
         }
 
         @media (max-width: 600px) {
@@ -279,8 +373,13 @@
                 grid-template-columns: 1fr;
             }
 
-            .voice-select-container {
-                grid-template-columns: 1fr;
+            .tabs {
+                gap: 0;
+            }
+
+            .tab-btn {
+                padding: 10px 15px;
+                font-size: 13px;
             }
         }
     </style>
@@ -288,74 +387,131 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎙️ Text-to-Speech (FREE)</h1>
-            <p>Chuyển văn bản thành âm thanh bằng Edge TTS - 50+ giọng, 20+ ngôn ngữ</p>
+            <h1>🎙️ TTS & STT API</h1>
+            <p>Chuyển đổi giữa Text & Âm thanh - 100% FREE, không cần Credentials</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="tts">📝 Text → Âm Thanh (TTS)</button>
+            <button class="tab-btn" data-tab="stt">🎤 Âm Thanh → Text (STT)</button>
         </div>
 
         <div class="message" id="message"></div>
 
-        <form id="ttsForm">
-            <div class="form-group">
-                <label>Nhập văn bản</label>
-                <textarea id="textInput" placeholder="Nhập đoạn văn bản bạn muốn chuyển thành âm thanh..." required></textarea>
-            </div>
-
-            <div class="form-group">
-                <label>Chọn Ngôn Ngữ & Giọng Nói</label>
-                <select id="languageFilter" style="margin-bottom: 15px;">
-                    <option value="Vietnamese">🇻🇳 Tiếng Việt (Mặc Định)</option>
-                </select>
-
-                <div id="voiceContainer" style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 12px;">
-                    <!-- Voices will be loaded here by JavaScript -->
+        <!-- TTS Tab -->
+        <div class="tab-content active" id="tts-tab">
+            <form id="ttsForm">
+                <div class="form-group">
+                    <label>Nhập văn bản</label>
+                    <textarea id="textInput" placeholder="Nhập đoạn văn bản bạn muốn chuyển thành âm thanh..." required></textarea>
                 </div>
-            </div>
 
-            <div class="form-group">
-                <label>Cài Đặt Âm Thanh</label>
-                <div class="form-row">
-                    <div>
-                        <label style="margin-bottom: 6px;">Tốc Độ</label>
-                        <input type="text" id="rate" value="+0%" placeholder="+0%">
-                        <small style="color: #999; font-size: 12px;">-100% đến +100%</small>
-                    </div>
-                    <div>
-                        <label style="margin-bottom: 6px;">Cao Độ</label>
-                        <input type="text" id="pitch" value="+0Hz" placeholder="+0Hz">
-                        <small style="color: #999; font-size: 12px;">-20Hz đến +20Hz</small>
+                <div class="form-group">
+                    <label>Chọn Ngôn Ngữ & Giọng Nói</label>
+                    <select id="languageFilter" style="margin-bottom: 15px;">
+                        <option value="Vietnamese">🇻🇳 Tiếng Việt (Mặc Định)</option>
+                    </select>
+
+                    <div id="voiceContainer" style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 12px;">
+                        <!-- Voices will be loaded here by JavaScript -->
                     </div>
                 </div>
+
+                <div class="form-group">
+                    <label>Cài Đặt Âm Thanh</label>
+                    <div class="form-row">
+                        <div>
+                            <label style="margin-bottom: 6px;">Tốc Độ</label>
+                            <input type="text" id="rate" value="+0%" placeholder="+0%">
+                            <small style="color: #999; font-size: 12px;">-100% đến +100%</small>
+                        </div>
+                        <div>
+                            <label style="margin-bottom: 6px;">Cao Độ</label>
+                            <input type="text" id="pitch" value="+0Hz" placeholder="+0Hz">
+                            <small style="color: #999; font-size: 12px;">-20Hz đến +20Hz</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn-primary" id="submitBtn">Tạo Âm Thanh</button>
+                    <button type="reset" class="btn-secondary">Xóa</button>
+                </div>
+            </form>
+
+            <div class="loading" id="ttsLoading">
+                <div class="spinner"></div>
+                <p>Đang xử lý...</p>
             </div>
 
-            <div class="button-group">
-                <button type="submit" class="btn-primary" id="submitBtn">Tạo Âm Thanh</button>
-                <button type="reset" class="btn-secondary">Xóa</button>
+            <div class="player-section" id="playerSection">
+                <div class="player-title">✅ Âm Thanh Được Tạo</div>
+                <audio id="audioPlayer" controls></audio>
+                <button type="button" class="btn-primary download-btn" id="downloadBtn">⬇️ Tải Xuống MP3</button>
             </div>
-        </form>
-
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Đang xử lý...</p>
         </div>
 
-        <div class="player-section" id="playerSection">
-            <div class="player-title">✅ Âm Thanh Được Tạo</div>
-            <audio id="audioPlayer" controls></audio>
-            <button type="button" class="btn-primary download-btn" id="downloadBtn">⬇️ Tải Xuống MP3</button>
+        <!-- STT Tab -->
+        <div class="tab-content" id="stt-tab">
+            <form id="sttForm">
+                <div class="form-group">
+                    <label>Chọn File Âm Thanh</label>
+                    <div class="file-input-wrapper" id="fileInputWrapper">
+                        <input type="file" id="audioFile" accept="audio/*" required>
+                        <div class="file-input-text">
+                            <strong>📁 Chọn file âm thanh</strong>
+                            <span>MP3, WAV, M4A, OGG, FLAC...</span>
+                        </div>
+                    </div>
+                    <p style="color: #999; font-size: 12px; margin-top: 8px;">File tối đa 25MB, hỗ trợ các định dạng âm thanh phổ biến</p>
+                </div>
+
+                <div class="form-group">
+                    <label>Chọn Ngôn Ngữ</label>
+                    <select id="sttLanguage">
+                        <option value="vi">🇻🇳 Tiếng Việt</option>
+                        <option value="en">🇺🇸 English</option>
+                        <option value="es">🇪🇸 Español</option>
+                        <option value="fr">🇫🇷 Français</option>
+                        <option value="de">🇩🇪 Deutsch</option>
+                        <option value="it">🇮🇹 Italiano</option>
+                        <option value="pt">🇵🇹 Português</option>
+                        <option value="ru">🇷🇺 Русский</option>
+                        <option value="ja">🇯🇵 日本語</option>
+                        <option value="zh">🇨🇳 中文</option>
+                    </select>
+                </div>
+
+                <div class="button-group">
+                    <button type="submit" class="btn-primary" id="sttSubmitBtn">🎤 Chuyển Đổi Thành Text</button>
+                    <button type="reset" class="btn-secondary">Xóa</button>
+                </div>
+            </form>
+
+            <div class="loading" id="sttLoading">
+                <div class="spinner"></div>
+                <p>Đang xử lý âm thanh...</p>
+            </div>
+
+            <div class="transcription-result" id="transcriptionResult">
+                <div class="player-title">✅ Kết Quả Chuyển Đổi</div>
+                <div class="transcription-text" id="transcriptionText"></div>
+                <button type="button" class="btn-primary" style="width: 100%; margin-top: 12px;" id="copyBtn">📋 Sao Chép</button>
+            </div>
         </div>
     </div>
 
     <script>
-        const form = document.getElementById('ttsForm');
+        // ==================== TTS ====================
+        const ttsForm = document.getElementById('ttsForm');
         const textInput = document.getElementById('textInput');
         const rateInput = document.getElementById('rate');
         const pitchInput = document.getElementById('pitch');
         const submitBtn = document.getElementById('submitBtn');
-        const loadingDiv = document.getElementById('loading');
+        const ttsLoadingDiv = document.getElementById('ttsLoading');
         const playerSection = document.getElementById('playerSection');
         const audioPlayer = document.getElementById('audioPlayer');
         const downloadBtn = document.getElementById('downloadBtn');
-        const messageDiv = document.getElementById('message');
         const languageFilter = document.getElementById('languageFilter');
         const voiceContainer = document.getElementById('voiceContainer');
 
@@ -550,7 +706,7 @@
         // Load voices on page load
         loadVoices();
 
-        form.addEventListener('submit', async (e) => {
+        ttsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const text = textInput.value.trim();
@@ -564,9 +720,9 @@
             }
 
             submitBtn.disabled = true;
-            loadingDiv.classList.add('active');
+            ttsLoadingDiv.classList.add('active');
             playerSection.classList.remove('active');
-            messageDiv.classList.remove('active');
+            document.getElementById('message').classList.remove('active');
 
             try {
                 const response = await fetch('/tts', {
@@ -605,7 +761,7 @@
                 showMessage('Lỗi: ' + error.message, 'error');
             } finally {
                 submitBtn.disabled = false;
-                loadingDiv.classList.remove('active');
+                ttsLoadingDiv.classList.remove('active');
             }
         });
 
@@ -620,7 +776,116 @@
             }
         });
 
+        // ==================== STT ====================
+        const sttForm = document.getElementById('sttForm');
+        const audioFile = document.getElementById('audioFile');
+        const fileInputWrapper = document.getElementById('fileInputWrapper');
+        const sttLanguage = document.getElementById('sttLanguage');
+        const sttSubmitBtn = document.getElementById('sttSubmitBtn');
+        const sttLoadingDiv = document.getElementById('sttLoading');
+        const transcriptionResult = document.getElementById('transcriptionResult');
+        const transcriptionText = document.getElementById('transcriptionText');
+        const copyBtn = document.getElementById('copyBtn');
+
+        // File input wrapper click handler
+        fileInputWrapper.addEventListener('click', () => {
+            audioFile.click();
+        });
+
+        // File input change handler
+        audioFile.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const fileName = e.target.files[0].name;
+                const fileSize = (e.target.files[0].size / 1024 / 1024).toFixed(2);
+                fileInputWrapper.querySelector('.file-input-text').innerHTML =
+                    `<strong>✅ ${fileName}</strong><span>${fileSize} MB</span>`;
+            }
+        });
+
+        sttForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!audioFile.files.length) {
+                showMessage('Vui lòng chọn file âm thanh', 'error');
+                return;
+            }
+
+            const file = audioFile.files[0];
+            const language = sttLanguage.value;
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+
+            sttSubmitBtn.disabled = true;
+            sttLoadingDiv.classList.add('active');
+            transcriptionResult.classList.remove('active');
+            document.getElementById('message').classList.remove('active');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`/stt?language=${language}&audio_format=${fileExtension}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Lỗi không xác định');
+                }
+
+                const data = await response.json();
+
+                if (data.status === 'error') {
+                    throw new Error(data.error || 'Không thể chuyển đổi âm thanh');
+                }
+
+                if (!data.text) {
+                    throw new Error('Không nhận được text từ API');
+                }
+
+                // Display transcription result
+                transcriptionText.textContent = data.text;
+                transcriptionResult.classList.add('active');
+                showMessage('Chuyển đổi thành công!', 'success');
+
+                // Store text for copying
+                window.transcriptionText = data.text;
+            } catch (error) {
+                showMessage('Lỗi: ' + error.message, 'error');
+            } finally {
+                sttSubmitBtn.disabled = false;
+                sttLoadingDiv.classList.remove('active');
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            if (window.transcriptionText) {
+                navigator.clipboard.writeText(window.transcriptionText).then(() => {
+                    showMessage('Đã sao chép vào clipboard!', 'success');
+                }).catch(() => {
+                    showMessage('Không thể sao chép, vui lòng thử lại', 'error');
+                });
+            }
+        });
+
+        // ==================== Tab Switching ====================
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Remove active class from all tabs
+                tabBtns.forEach(b => b.classList.remove('active'));
+                tabContents.forEach(c => c.classList.remove('active'));
+
+                // Add active class to clicked tab
+                btn.classList.add('active');
+                document.getElementById(`${btn.dataset.tab}-tab`).classList.add('active');
+            });
+        });
+
         function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
             messageDiv.textContent = text;
             messageDiv.className = `message active ${type}`;
             setTimeout(() => {
