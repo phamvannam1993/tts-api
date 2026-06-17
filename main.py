@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ import os
 from contextlib import asynccontextmanager
 
 from tts_service import generate_audio, VOICE_PRESETS
+from stt_service import transcribe_audio, list_supported_languages
 from cleanup_scheduler import start_cleanup_scheduler
 
 scheduler = None
@@ -24,8 +25,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="TTS API - Free Text-to-Speech",
-    description="Edge TTS - Hoàn toàn FREE, không cần credentials. Hỗ trợ 50+ giọng nói, 20+ ngôn ngữ",
+    title="TTS & STT API - Text-to-Speech & Speech-to-Text",
+    description="Edge TTS + STT - Hoàn toàn FREE, không cần credentials. TTS: 50+ giọng, 20+ ngôn ngữ. STT: Google Speech Recognition, hỗ trợ 10+ ngôn ngữ",
     lifespan=lifespan
 )
 
@@ -54,6 +55,14 @@ class TTSRequest(BaseModel):
     voice: str = "vi-VN-HoaiMyNeural"
     rate: Optional[str] = None
     pitch: Optional[str] = None
+
+
+# -----------------------
+# Request model for STT
+# -----------------------
+class STTRequest(BaseModel):
+    language: str = "vi"
+    audio_format: str = "mp3"
 
 
 # -----------------------
@@ -152,15 +161,84 @@ def get_voice_details(voice_id: str):
 
 
 # -----------------------
+# API: Convert audio -> text (STT)
+# -----------------------
+@app.post("/stt")
+async def stt(
+    file: UploadFile = File(...),
+    language: str = "vi",
+    audio_format: str = "mp3"
+):
+    """
+    Transcribe audio file to text
+
+    - **file**: Audio file (mp3, wav, etc.)
+    - **language**: Language code (vi, en, es, fr, de, it, pt, ru, ja, zh)
+    - **audio_format**: Audio format (mp3, wav, etc.)
+    """
+    try:
+        if not file:
+            raise HTTPException(status_code=400, detail="Audio file is required")
+
+        # Validate language
+        supported_langs = list_supported_languages()
+        if language not in supported_langs:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Language '{language}' not supported. Supported: {', '.join(supported_langs.keys())}"
+            )
+
+        # Read file content
+        audio_data = await file.read()
+        if not audio_data:
+            raise HTTPException(status_code=400, detail="Audio file is empty")
+
+        # Transcribe
+        result = await transcribe_audio(audio_data, language, audio_format)
+
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["error"])
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"STT processing failed: {str(e)}")
+
+
+# -----------------------
+# API: Get supported languages for STT
+# -----------------------
+@app.get("/stt/languages")
+def get_stt_languages():
+    """List all supported languages for speech-to-text"""
+    return {
+        "supported_languages": list_supported_languages()
+    }
+
+
+# -----------------------
 # health check
 # -----------------------
 @app.get("/")
 def home():
     return {
-        "status": "TTS API running ✅",
-        "version": "3.0",
-        "provider": "Edge TTS (Hoàn toàn FREE)",
-        "voices": "50+ giọng, 20+ ngôn ngữ",
+        "status": "TTS & STT API running ✅",
+        "version": "4.0",
+        "features": {
+            "tts": {
+                "provider": "Edge TTS (FREE)",
+                "voices": "50+ giọng",
+                "languages": "20+ ngôn ngữ",
+                "endpoint": "/tts"
+            },
+            "stt": {
+                "provider": "Google Speech Recognition (FREE)",
+                "languages": "10+ ngôn ngữ",
+                "endpoint": "/stt"
+            }
+        },
         "credentials_needed": False,
         "docs": "/docs",
         "web": "/web"
