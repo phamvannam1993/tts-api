@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -11,6 +11,7 @@ from tts_service import generate_audio, VOICE_PRESETS
 from cleanup_scheduler import start_cleanup_scheduler
 
 scheduler = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,11 +22,29 @@ async def lifespan(app: FastAPI):
         scheduler.shutdown()
         print("✅ Cleanup Scheduler stopped")
 
+
 app = FastAPI(
     title="TTS API - Free Text-to-Speech",
     description="Edge TTS - Hoàn toàn FREE, không cần credentials. Hỗ trợ 50+ giọng nói, 20+ ngôn ngữ",
     lifespan=lifespan
 )
+
+# -----------------------
+# CORS - Mở all cho frontend
+# -----------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[
+        "Content-Disposition",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+    ],
+)
+
 
 # -----------------------
 # Request model
@@ -38,14 +57,13 @@ class TTSRequest(BaseModel):
 
 
 # -----------------------
-# API: Convert text -> audio (return link)
+# API: Convert text -> audio
 # -----------------------
 @app.post("/tts")
 async def tts(req: TTSRequest):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text is required")
 
-    # Validate voice exists
     if req.voice not in VOICE_PRESETS:
         raise HTTPException(status_code=400, detail=f"Voice '{req.voice}' not found")
 
@@ -58,11 +76,13 @@ async def tts(req: TTSRequest):
         )
 
         filename = os.path.basename(file_path)
+
         return {
             "status": "success",
             "audio_url": f"/audio/{filename}",
             "filename": filename
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -72,7 +92,6 @@ async def tts(req: TTSRequest):
 # -----------------------
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
-    """Download audio file by filename"""
     file_path = os.path.join("audio_cache", filename)
 
     # Security: prevent directory traversal
@@ -94,7 +113,6 @@ async def get_audio(filename: str):
 # -----------------------
 @app.get("/voices")
 def list_voices():
-    """List all available voices with metadata"""
     voices_by_language = {}
 
     for voice_id, preset in VOICE_PRESETS.items():
@@ -119,11 +137,11 @@ def list_voices():
 # -----------------------
 @app.get("/voices/{voice_id}")
 def get_voice_details(voice_id: str):
-    """Get details for a specific voice"""
     if voice_id not in VOICE_PRESETS:
         raise HTTPException(status_code=404, detail=f"Voice '{voice_id}' not found")
 
     preset = VOICE_PRESETS[voice_id]
+
     return {
         "id": voice_id,
         "name": preset.get("name"),
@@ -150,7 +168,8 @@ def home():
 
 
 # -----------------------
-# Serve static files (web UI)
+# Serve static files
 # -----------------------
 if os.path.exists("static"):
     app.mount("/web", StaticFiles(directory="static", html=True), name="static")
+    
