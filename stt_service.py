@@ -2,19 +2,19 @@ import speech_recognition as sr
 import os
 import hashlib
 import json
-from typing import Optional, Dict
-import io
-import wave
+from typing import Dict, Optional
 import subprocess
 import tempfile
+from pathlib import Path
+import asyncio
+
+import imageio_ffmpeg
+
 
 TRANSCRIPTION_CACHE_DIR = "transcription_cache"
 TRANSCRIPTION_CACHE_FILE = os.path.join(TRANSCRIPTION_CACHE_DIR, "cache.json")
 
 os.makedirs(TRANSCRIPTION_CACHE_DIR, exist_ok=True)
-
-# Initialize recognizer
-recognizer = sr.Recognizer()
 
 # Supported languages for STT
 LANGUAGE_CODES = {
@@ -32,16 +32,16 @@ LANGUAGE_CODES = {
 
 # Language code mapping for Google Speech Recognition
 LANGUAGE_CODE_MAP = {
-    "vi": "vi-VN",      # Vietnamese
-    "en": "en-US",      # English
-    "es": "es-ES",      # Spanish
-    "fr": "fr-FR",      # French
-    "de": "de-DE",      # German
-    "it": "it-IT",      # Italian
-    "pt": "pt-PT",      # Portuguese
-    "ru": "ru-RU",      # Russian
-    "ja": "ja-JP",      # Japanese
-    "zh": "zh-CN",      # Chinese (Simplified)
+    "vi": "vi-VN",
+    "en": "en-US",
+    "es": "es-ES",
+    "fr": "fr-FR",
+    "de": "de-DE",
+    "it": "it-IT",
+    "pt": "pt-PT",
+    "ru": "ru-RU",
+    "ja": "ja-JP",
+    "zh": "zh-CN",
 }
 
 
@@ -71,96 +71,123 @@ def get_audio_hash(audio_data: bytes) -> str:
     return hashlib.md5(audio_data).hexdigest()
 
 
-def convert_to_wav_with_ffmpeg(input_path: str, output_path: str) -> bool:
-    """Convert audio file to WAV using ffmpeg"""
-    try:
+def normalize_audio_format(audio_format: Optional[str]) -> str:
+    """
+    Convert content-type / extension to a safe file extension.
+
+    Examples:
+    - audio/webm -> .webm
+    - webm -> .webm
+    - audio/ogg;codecs=opus -> .ogg
+    - mp3 -> .mp3
+    """
+    fmt = (audio_format or "").lower().strip()
+
+    if not fmt:
+        return ".webm"
+
+    # remove codec part: audio/webm;codecs=opus
+    fmt = fmt.split(";")[0].strip()
+
+    # remove audio/
+    if fmt.startswith("audio/"):
+        fmt = fmt.replace("audio/", "", 1)
+
+    # remove dot
+    fmt = fmt.replace(".", "").strip()
+
+    if fmt in ["webm"]:
+        return ".webm"
+
+    if fmt in ["ogg", "opus"]:
+        return ".ogg"
+
+    if fmt in ["mp3", "mpeg", "mpga"]:
+        return ".mp3"
+
+    if fmt in ["mp4", "m4a", "aac", "x-m4a"]:
+        return ".m4a"
+
+    if fmt in ["wav", "wave", "x-wav"]:
+        return ".wav"
+
+    if fmt in ["flac", "x-flac"]:
+        return ".flac"
+
+    # fallback for browser MediaRecorder
+    return ".webm"
+
+
+def convert_audio_to_pcm_wav(audio_data: bytes, audio_format: Optional[str]) -> bytes:
+    """
+    Convert any uploaded audio to WAV PCM 16-bit mono 16kHz.
+
+    This fixes:
+    Audio file could not be read as PCM WAV, AIFF/AIFF-C, or Native FLAC
+    """
+    input_ext = normalize_audio_format(audio_format)
+    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+
+        input_path = temp_dir_path / f"input{input_ext}"
+        output_path = temp_dir_path / "output.wav"
+
+        input_path.write_bytes(audio_data)
+
         cmd = [
-            'ffmpeg',
-            '-i', input_path,
-            '-acodec', 'pcm_s16le',
-            '-ar', '16000',
-            '-ac', '1',
-            '-y',
-            output_path
+            ffmpeg_exe,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(input_path),
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-f",
+            "wav",
+            str(output_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+        )
 
         if result.returncode != 0:
-            print(f"⚠️ FFmpeg error: {result.stderr}")
-            return False
+            raise Exception(f"FFmpeg convert failed: {result.stderr}")
 
-        print(f"✅ Converted to WAV: {output_path}")
-        return True
-    except Exception as e:
-        print(f"⚠️ Conversion error: {e}")
-        return False
+        if not output_path.exists():
+            raise Exception("FFmpeg convert failed: output.wav not found")
+
+        return output_path.read_bytes()
 
 
-def convert_audio_to_wav(audio_data: bytes, format: str) -> bytes:
-    """Convert audio data to WAV format"""
-    try:
-        # If already WAV, return as-is
-        if format.lower() == 'wav':
-            return audio_data
-
-        # Try to use ffmpeg for conversion
-        with tempfile.NamedTemporaryFile(suffix=f".{format}", delete=False) as tmp_input:
-            tmp_input.write(audio_data)
-            tmp_input_path = tmp_input.name
-
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_output:
-            tmp_output_path = tmp_output.name
-
-        try:
-            # Convert using ffmpeg
-            success = convert_to_wav_with_ffmpeg(tmp_input_path, tmp_output_path)
-
-            if not success:
-                print(f"⚠️ FFmpeg conversion failed, trying alternative method...")
-                raise Exception("FFmpeg conversion failed")
-
-            # Read converted WAV file
-            with open(tmp_output_path, 'rb') as f:
-                wav_data = f.read()
-
-            return wav_data
-        finally:
-            # Clean up temp files
-            for path in [tmp_input_path, tmp_output_path]:
-                try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                except:
-                    pass
-
-    except Exception as e:
-        print(f"⚠️ Audio conversion failed: {e}")
-        raise Exception(f"Could not convert audio to WAV format: {str(e)}")
-
-
-async def transcribe_audio(
+def transcribe_audio_sync(
     audio_data: bytes,
     language: str = "vi",
-    audio_format: str = "mp3"
+    audio_format: Optional[str] = "webm",
 ) -> Dict[str, str]:
-    """
-    Transcribe audio file to text using Google Speech Recognition
-
-    Args:
-        audio_data: Raw audio bytes
-        language: Language code (vi, en, es, etc.)
-        audio_format: Audio format (mp3, wav, etc.)
-
-    Returns:
-        {
-            "status": "success",
-            "text": "transcribed text",
-            "language": "vi"
-        }
-    """
     temp_file = None
+
     try:
+        if not audio_data:
+            return {
+                "status": "error",
+                "error": "Audio file is empty",
+                "language": language,
+            }
+
         # Check cache first
         cache = load_transcription_cache()
         audio_hash = get_audio_hash(audio_data)
@@ -172,85 +199,97 @@ async def transcribe_audio(
                 "status": "success",
                 "text": cache[cache_key]["text"],
                 "language": language,
-                "cached": True
+                "cached": True,
             }
 
-        # Convert to WAV if needed (SpeechRecognition works best with WAV)
-        print(f"🎤 Processing audio file ({audio_format})...")
-        if audio_format.lower() != 'wav':
-            print(f"🔄 Converting {audio_format.upper()} to WAV...")
-            try:
-                audio_data = convert_audio_to_wav(audio_data, audio_format.lower())
-                audio_format = 'wav'
-            except Exception as e:
-                # If conversion fails, try using the original format
-                print(f"⚠️ Conversion failed, attempting with original format: {e}")
+        print(f"🎤 Processing audio file: {audio_format}")
 
-        # Save audio to temporary file for speech_recognition to use
-        with tempfile.NamedTemporaryFile(suffix=f".{audio_format.lower()}", delete=False) as tmp:
-            tmp.write(audio_data)
+        # Always convert to WAV PCM before SpeechRecognition
+        print("🔄 Converting audio to WAV PCM 16kHz mono...")
+        wav_data = convert_audio_to_pcm_wav(audio_data, audio_format)
+
+        # Save converted WAV to temp file
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(wav_data)
             temp_file = tmp.name
 
-        # Load audio using speech_recognition AudioFile
-        print(f"📖 Reading audio from temp file...")
+        print("📖 Reading converted WAV file...")
+
+        recognizer = sr.Recognizer()
+
         with sr.AudioFile(temp_file) as source:
             audio = recognizer.record(source)
 
-        # Get language code for Google Speech Recognition
         lang_code = LANGUAGE_CODE_MAP.get(language, "vi-VN")
 
-        # Transcribe using Google Speech Recognition
-        print(f"🔍 Transcribing audio ({language})...")
+        print(f"🔍 Transcribing audio language={language}, google_lang={lang_code}...")
         text = recognizer.recognize_google(audio, language=lang_code)
 
-        # Save to cache
         cache[cache_key] = {
             "text": text,
             "language": language,
-            "audio_hash": audio_hash
+            "audio_hash": audio_hash,
         }
+
         save_transcription_cache(cache)
 
-        print(f"✅ Transcription complete: {text[:50]}...")
+        print(f"✅ Transcription complete: {text[:80]}...")
 
         return {
             "status": "success",
             "text": text,
             "language": language,
-            "cached": False
+            "cached": False,
         }
 
     except sr.UnknownValueError:
         return {
             "status": "error",
-            "error": "Could not understand audio - please check file quality or try a different audio",
-            "language": language
+            "error": "Không nhận diện được giọng nói. File có thể quá nhỏ, quá ồn hoặc không có tiếng nói rõ.",
+            "language": language,
         }
+
     except sr.RequestError as e:
         error_msg = str(e)
         if "403" in error_msg or "401" in error_msg:
             error_msg = "Google Speech Recognition service error - please try again later"
+
         return {
             "status": "error",
             "error": f"Speech Recognition error: {error_msg}",
-            "language": language
+            "language": language,
         }
+
     except Exception as e:
         return {
             "status": "error",
             "error": f"Audio processing error: {str(e)}",
-            "language": language
+            "language": language,
         }
+
     finally:
-        # Clean up temporary file
         if temp_file and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
-                print(f"🗑️  Cleaned up temp file: {temp_file}")
+                print(f"🗑️ Cleaned up temp file: {temp_file}")
             except Exception as e:
                 print(f"⚠️ Warning: Could not delete temp file {temp_file}: {e}")
+
+
+async def transcribe_audio(
+    audio_data: bytes,
+    language: str = "vi",
+    audio_format: Optional[str] = "webm",
+) -> Dict[str, str]:
+    return await asyncio.to_thread(
+        transcribe_audio_sync,
+        audio_data,
+        language,
+        audio_format,
+    )
 
 
 def list_supported_languages() -> Dict[str, str]:
     """List all supported languages for STT"""
     return LANGUAGE_CODES
+    
