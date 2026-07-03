@@ -56,3 +56,10 @@ INFO:     127.0.0.1:62294 - "GET /audio/c9b019ea5a407d21c966997aed6c4086.mp3 HTT
 ✅ Transcription complete: tiếng Việt rất đẹp...
 🗑️  Cleaned up temp file: /var/folders/5j/9zb3_9xj2dnbxrv1vs53lfn40000gp/T/tmpv4yg4ylw.wav
 INFO:     127.0.0.1:62296 - "POST /stt?language=vi&audio_format=mp3 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:apscheduler.scheduler:Scheduler has been shut down
+INFO:     Application shutdown complete.
+INFO:     Finished server process [26230]
+✅ Cleanup Scheduler stopped
+INFO:     Stopping reloader process [26226]

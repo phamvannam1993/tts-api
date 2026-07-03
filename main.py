@@ -62,7 +62,7 @@ class TTSRequest(BaseModel):
 # -----------------------
 class STTRequest(BaseModel):
     language: str = "vi"
-    audio_format: str = "mp3"
+    audio_format: str = ""
 
 
 # -----------------------
@@ -167,20 +167,19 @@ def get_voice_details(voice_id: str):
 async def stt(
     file: UploadFile = File(...),
     language: str = "vi",
-    audio_format: str = "mp3"
+    audio_format: str = ""
 ):
     """
     Transcribe audio file to text
 
-    - **file**: Audio file (mp3, wav, etc.)
-    - **language**: Language code (vi, en, es, fr, de, it, pt, ru, ja, zh)
-    - **audio_format**: Audio format (mp3, wav, etc.)
+    - file: Audio file webm, ogg, mp3, m4a, wav, flac...
+    - language: vi, en, es, fr, de, it, pt, ru, ja, zh
+    - audio_format: optional. Nếu không truyền, backend tự lấy theo content_type hoặc filename.
     """
     try:
         if not file:
             raise HTTPException(status_code=400, detail="Audio file is required")
 
-        # Validate language
         supported_langs = list_supported_languages()
         if language not in supported_langs:
             raise HTTPException(
@@ -188,13 +187,23 @@ async def stt(
                 detail=f"Language '{language}' not supported. Supported: {', '.join(supported_langs.keys())}"
             )
 
-        # Read file content
         audio_data = await file.read()
         if not audio_data:
             raise HTTPException(status_code=400, detail="Audio file is empty")
 
-        # Transcribe
-        result = await transcribe_audio(audio_data, language, audio_format)
+        # Ưu tiên lấy định dạng thật từ content_type của file upload
+        detected_format = (
+            audio_format
+            or file.content_type
+            or os.path.splitext(file.filename or "")[1].replace(".", "")
+            or "webm"
+        )
+
+        result = await transcribe_audio(
+            audio_data=audio_data,
+            language=language,
+            audio_format=detected_format,
+        )
 
         if result["status"] == "error":
             raise HTTPException(status_code=500, detail=result["error"])
@@ -203,9 +212,12 @@ async def stt(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"STT processing failed: {str(e)}")
 
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"STT processing failed: {str(e)}"
+        )
 
 # -----------------------
 # API: Get supported languages for STT
